@@ -4,14 +4,14 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - ../../deploy
+- ../../deploy
 # Transformer "images" : remplace le nom ET le tag de toute image appelée `name:` dans TOUS les manifestes de la base,
 # sans toucher aux fichiers. C'est la seule partie de ce fichier que la CI modifie (job "promote" : `kustomize edit set image`).
 # GITHUB_OWNER est remplacé par ton identifiant GitHub (en minuscules) : ./scripts/set-owner.ps1 -Owner <toi>
 images:
-  - name: ml-api
-    newName: ghcr.io/hcridlig/ml-api
-    newTag: pending-first-ci-run   # écrasé par la CI dès la première exécution réussie
-  - name: ml-dashboard
-    newName: ghcr.io/hcridlig/ml-dashboard
-    newTag: pending-first-ci-run
+- name: ml-api
+  newName: ghcr.io/hcridlig/ml-api
+  newTag: ecc327500b36131880541e0bcc6ee01a509751f1
+- name: ml-dashboard
+  newName: ghcr.io/hcridlig/ml-dashboard
+  newTag: ecc327500b36131880541e0bcc6ee01a509751f1
