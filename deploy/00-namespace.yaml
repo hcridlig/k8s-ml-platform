@@ -1,0 +1,6 @@
+# Un namespace = une frontière logique dans le cluster (noms, droits RBAC, quotas, NetworkPolicies).
+# On isole le projet pour ne jamais travailler dans "default" : c'est un réflexe de prod.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ml-platform

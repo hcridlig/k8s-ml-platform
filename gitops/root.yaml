@@ -1,0 +1,21 @@
+# Application "racine" (pattern app-of-apps) : elle déploie le dossier gitops/apps/, dont chaque fichier est lui-même une
+# Application. Ajouter un composant à la plateforme = ajouter un fichier dans ce dossier et pousser. Rien d'autre à faire.
+# C'est le seul objet ArgoCD appliqué à la main (kubectl apply -f gitops/root.yaml) ; tout le reste s'en déduit.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+spec:
+  project: lab
+  source:
+    repoURL: https://github.com/hcridlig/k8s-ml-platform.git
+    targetRevision: main
+    path: gitops/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd          # les objets Application doivent vivre dans le namespace d'ArgoCD
+  syncPolicy:
+    automated:
+      prune: true              # un fichier supprimé de Git = l'application correspondante est supprimée
+      selfHeal: true           # une modification faite à la main dans le cluster est annulée (Git a toujours raison)

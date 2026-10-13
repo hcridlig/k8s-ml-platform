@@ -1,0 +1,28 @@
+# L'application elle-même. Le chemin pointe sur l'OVERLAY Kustomize : ArgoCD détecte kustomization.yaml et fait `kustomize build`.
+# Quand la CI commit un nouveau tag d'image dans overlays/lab/kustomization.yaml, cette Application devient OutOfSync,
+# puis ArgoCD applique : le Deployment change d'image, Kubernetes fait le rolling update (maxUnavailable: 0).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ml-platform
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"   # 1 = ce qui utilise les CRD et services des fondations
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io   # supprimer cette Application supprime aussi ce qu'elle a déployé
+spec:
+  project: lab
+  sources:
+    - repoURL: https://github.com/hcridlig/k8s-ml-platform.git
+      targetRevision: main
+      path: overlays/lab
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ml-platform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:                       # filet de sécurité : une ressource qui échoue (ordre, CRD pas encore prête) est retentée
+      limit: 5
+      backoff: {duration: 20s, factor: 2, maxDuration: 5m}

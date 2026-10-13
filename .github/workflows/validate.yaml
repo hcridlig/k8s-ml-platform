@@ -1,0 +1,34 @@
+# Valide les manifestes Kubernetes : le rendu Kustomize puis chaque objet contre son schéma. Séparé de ci.yaml car il
+# n'a rien à voir avec les images : il tourne quand un manifeste change (et à chaque promotion, qui change overlays/).
+name: validate
+
+on:
+  push:
+    branches: [main]
+    paths: [deploy/**, loadtest/**, monitoring/**, gateway/**, gitops/**, overlays/**, .github/workflows/validate.yaml]
+  pull_request:
+    paths: [deploy/**, loadtest/**, monitoring/**, gateway/**, gitops/**, overlays/**, .github/workflows/validate.yaml]
+
+permissions:
+  contents: read
+
+jobs:
+  manifests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # kustomize est préinstallé sur les runners GitHub. Si le rendu échoue, ArgoCD échouerait pareil : on le sait avant.
+      - name: Rendre l'overlay Kustomize
+        run: kustomize build overlays/lab > "$RUNNER_TEMP/rendered.yaml"
+      # kubeconform valide chaque objet contre son schéma : ceux de Kubernetes, puis ceux des CRD (ArgoCD, Gateway API,
+      # Prometheus Operator, Envoy Gateway) fournis par le catalogue communautaire. -strict refuse les champs inconnus.
+      # Une coquille (`replica:` au lieu de `replicas:`) casse ici, pas dans le cluster à 23 h.
+      - name: Valider les manifestes
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" -v "$RUNNER_TEMP:/rendered:ro" ghcr.io/yannh/kubeconform:v0.7.0 \
+            -strict -summary -kubernetes-version 1.34.0 \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            /rendered/rendered.yaml /repo/loadtest /repo/monitoring /repo/gateway /repo/gitops

@@ -1,0 +1,46 @@
+# releaseName: monitoring -> les Services s'appellent monitoring-grafana, monitoring-kube-prometheus-prometheus... comme en phase 2.
+# ServerSideApply : les CRD de ce chart dépassent la limite de taille de l'annotation utilisée par `kubectl apply` classique
+# (erreur "metadata.annotations: Too long"). Avec Server-Side Apply, K8s suit lui-même qui possède quel champ.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"   # 0 = fondations (CRD, API de métriques) ; elles doivent être saines avant la vague 1
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io   # supprimer cette Application supprime aussi ce qu'elle a déployé
+spec:
+  project: lab
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 92.1.1
+      helm:
+        releaseName: monitoring
+        valueFiles:
+          - $values/platform/kube-prometheus-stack-values.yaml
+    - repoURL: https://github.com/hcridlig/k8s-ml-platform.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:                       # filet de sécurité : une ressource qui échoue (ordre, CRD pas encore prête) est retentée
+      limit: 5
+      backoff: {duration: 20s, factor: 2, maxDuration: 5m}
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+  ignoreDifferences:               # le chart injecte un certificat (caBundle) dans ces webhooks APRÈS l'installation :
+    - group: admissionregistration.k8s.io   # sans cette règle, ArgoCD le verrait comme une dérive et l'effacerait (selfHeal)
+      kind: MutatingWebhookConfiguration
+      jqPathExpressions: ['.webhooks[]?.clientConfig.caBundle']
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jqPathExpressions: ['.webhooks[]?.clientConfig.caBundle']

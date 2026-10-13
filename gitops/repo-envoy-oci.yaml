@@ -1,0 +1,15 @@
+# Le chart d'Envoy Gateway n'est pas dans un dépôt Helm classique mais dans un registre OCI (Docker Hub), comme une image.
+# ArgoCD doit savoir que cette URL est un registre OCI de charts Helm : un Secret étiqueté "repository" le déclare.
+# Pas d'identifiants : le registre est public. À appliquer une fois, avant root.yaml.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: repo-envoyproxy-oci
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: helm
+  name: envoyproxy
+  url: registry-1.docker.io/envoyproxy
+  enableOCI: "true"

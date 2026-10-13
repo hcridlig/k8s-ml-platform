@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+# produits par `python train.py` (au build de l'image, ou en local pour les tests)
+app/model.joblib
+app/samples.json
+*.tar

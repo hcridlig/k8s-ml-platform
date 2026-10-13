@@ -1,0 +1,67 @@
+# RBAC = qui a le droit de faire quoi dans l'API Kubernetes.
+# Le dashboard lit l'état du cluster en appelant cette API avec le jeton de son ServiceAccount.
+# Principe du moindre privilège : un Role (limité à CE namespace) par besoin, avec la liste exacte des verbes.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ml-dashboard
+  namespace: ml-platform
+automountServiceAccountToken: true   # le jeton est monté dans /var/run/secrets/kubernetes.io/serviceaccount
+---
+# Lecture seule : de quoi dessiner le plan.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ml-dashboard-read
+  namespace: ml-platform
+rules:
+  - apiGroups: [""]                          # groupe "core" : pods
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["metrics.k8s.io"]            # API servie par metrics-server (c'est ce que lit `kubectl top`)
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ml-dashboard-read
+  namespace: ml-platform
+subjects:
+  - kind: ServiceAccount
+    name: ml-dashboard
+    namespace: ml-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ml-dashboard-read
+---
+# Pouvoir de panne : supprimer un pod (bouton "Supprimer un pod"). Lab uniquement.
+# Il est séparé exprès : supprimer ce Role et son binding retire ce pouvoir sans toucher à la lecture.
+# Vérifier un droit : kubectl auth can-i delete pods -n ml-platform --as=system:serviceaccount:ml-platform:ml-dashboard
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ml-dashboard-chaos
+  namespace: ml-platform
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ml-dashboard-chaos
+  namespace: ml-platform
+subjects:
+  - kind: ServiceAccount
+    name: ml-dashboard
+    namespace: ml-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ml-dashboard-chaos

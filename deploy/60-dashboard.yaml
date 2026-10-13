@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-dashboard
+  namespace: ml-platform
+  labels:
+    app: ml-dashboard
+spec:
+  replicas: 1                      # un seul suffit : il ne sert que de fenêtre sur le cluster
+  selector:
+    matchLabels:
+      app: ml-dashboard
+  template:
+    metadata:
+      labels:
+        app: ml-dashboard
+    spec:
+      serviceAccountName: ml-dashboard     # sans cette ligne, le pod utiliserait le ServiceAccount "default" (sans droits)
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: dashboard
+          image: ml-dashboard:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: NAMESPACE              # downward API : le pod apprend son propre namespace sans qu'on l'écrive en dur
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: TARGET_APP
+              value: ml-api
+            - name: LOCUST_URL             # nom DNS complet d'un Service d'un AUTRE namespace : <service>.<namespace>.svc
+              value: http://locust-master.loadtest.svc.cluster.local:8089
+            - name: ENABLE_CHAOS           # active les boutons "Pannes" (et exige le Role ml-dashboard-chaos)
+              value: "1"
+          resources:
+            requests: {cpu: 50m, memory: 96Mi}
+            limits: {cpu: 300m, memory: 192Mi}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 15
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-dashboard
+  namespace: ml-platform
+spec:
+  type: ClusterIP
+  selector:
+    app: ml-dashboard
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

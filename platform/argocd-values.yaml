@@ -1,0 +1,34 @@
+# Valeurs du chart Helm argo-cd (installé UNE fois à la main : c'est le seul "oeuf" avant la poule, ensuite ArgoCD gère le reste).
+global:
+  domain: argocd.localhost
+
+configs:
+  params:
+    # Le TLS est (dans un vrai cluster) terminé à la Gateway ; derrière elle, argocd-server parle en HTTP simple.
+    # Sans ça, il redirige tout vers HTTPS en boucle.
+    server.insecure: true
+
+  cm:
+    # Restaure l'évaluation de santé des objets "Application", retirée d'ArgoCD en 1.8. Sans elle, une Application enfant
+    # est toujours considérée saine : les vagues de synchronisation (sync-wave) du pattern app-of-apps ne seraient donc pas
+    # respectées, et les ressources dépendant d'une CRD pourraient partir avant que la CRD existe.
+    # Source : docs/operator-manual/health.md d'ArgoCD.
+    resource.customizations.health.argoproj.io_Application: |
+      hs = {}
+      hs.status = "Progressing"
+      hs.message = ""
+      if obj.status ~= nil then
+        if obj.status.health ~= nil then
+          hs.status = obj.status.health.status
+          if obj.status.health.message ~= nil then
+            hs.message = obj.status.health.message
+          end
+        end
+      end
+      return hs
+
+# Composants inutiles pour ce lab (économie de RAM) : SSO (dex) et notifications.
+dex:
+  enabled: false
+notifications:
+  enabled: false

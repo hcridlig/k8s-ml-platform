@@ -1,0 +1,7 @@
+# metrics-server = la source du CPU/mémoire en temps réel dans le cluster.
+# C'est lui qui répond à `kubectl top` ET qui alimente l'autoscaler (HPA). Sans lui, le HPA affiche <unknown>.
+# (Il ne remplace pas Prometheus : il ne garde pas d'historique, seulement la dernière mesure, toutes les 15 s.)
+args:
+  # Les kubelets d'un cluster kind (Docker Desktop) ont un certificat auto-signé que metrics-server refuse par défaut.
+  # Acceptable en lab ; en production on garde la vérification et on déploie des certificats kubelet signés.
+  - --kubelet-insecure-tls

@@ -1,0 +1,30 @@
+# Contrôleur Envoy Gateway + CRD Gateway API (GatewayClass, Gateway, HTTPRoute...). Chart OCI : voir repo-envoy-oci.yaml.
+# Le contrôleur lit les Gateway/HTTPRoute et configure en conséquence les pods Envoy qui reçoivent le trafic.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: envoy-gateway
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"   # 0 = fondations (CRD, API de métriques) ; elles doivent être saines avant la vague 1
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io   # supprimer cette Application supprime aussi ce qu'elle a déployé
+spec:
+  project: lab
+  sources:
+    - repoURL: registry-1.docker.io/envoyproxy
+      chart: gateway-helm
+      targetRevision: v1.9.2
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: envoy-gateway-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:                       # filet de sécurité : une ressource qui échoue (ordre, CRD pas encore prête) est retentée
+      limit: 5
+      backoff: {duration: 20s, factor: 2, maxDuration: 5m}
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

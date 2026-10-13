@@ -1,0 +1,42 @@
+# HorizontalPodAutoscaler = "ajuste le nombre de pods selon la charge mesurée".
+#
+# Boucle de contrôle (toutes les 15 s par défaut) :
+#   1. lit le CPU de chaque pod dans metrics-server (install: platform/metrics-server-values.yaml)
+#   2. calcule l'utilisation moyenne = CPU utilisé / CPU demandé (la `request`), sur les pods prêts
+#   3. nombre voulu = ceil( pods actuels x utilisation moyenne / cible )
+#      exemple : 3 pods à 150 % pour une cible de 50 % -> ceil(3 x 150 / 50) = 9 pods
+#   4. ignore l'écart si on est à moins de 10 % de la cible (tolérance, évite le yoyo)
+#   5. borne le résultat entre minReplicas et maxReplicas, puis applique la politique `behavior`
+#
+# Conséquence importante : sans `requests.cpu` dans le Deployment, il n'y a pas de pourcentage, donc pas d'autoscaling.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ml-api
+  namespace: ml-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ml-api
+  minReplicas: 3                   # plancher : tient une panne de nœud et un pic soudain
+  maxReplicas: 8                   # plafond : protège le cluster (et ton PC) d'un emballement
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50   # on vise 50 % de la request : de la marge pour absorber un pic pendant le démarrage des nouveaux pods
+
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0        # monter tout de suite : une charge qui arrive ne se négocie pas
+      selectPolicy: Max                    # entre les deux politiques ci-dessous, on prend la plus agressive
+      policies:
+        - {type: Percent, value: 100, periodSeconds: 15}   # doubler toutes les 15 s...
+        - {type: Pods, value: 4, periodSeconds: 15}        # ...ou +4 pods (utile quand on part de peu)
+    scaleDown:
+      stabilizationWindowSeconds: 60       # défaut 300 s ; réduit pour que la démo redescende vite
+      policies:
+        - {type: Pods, value: 1, periodSeconds: 30}        # descendre doucement : 1 pod toutes les 30 s

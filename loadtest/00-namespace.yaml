@@ -1,0 +1,6 @@
+# Le générateur de charge vit dans SON namespace : on ne mélange pas l'outil de test avec ce qu'on teste,
+# et on pourra lui appliquer ses propres quotas ou NetworkPolicies.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: loadtest

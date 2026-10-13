@@ -1,0 +1,2 @@
+# CVE acceptées en connaissance de cause, une par ligne, TOUJOURS avec la raison et une date de réexamen. Exemple :
+# CVE-2099-12345   # non exploitable : fonction jamais appelée par l'API ; à réexaminer le 2027-01-15

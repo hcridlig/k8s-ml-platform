@@ -1,0 +1,55 @@
+# Gateway API = le standard Kubernetes pour exposer des services (successeur de Ingress, dont ingress-nginx, retiré en mars 2026).
+# Il sépare trois rôles, donc trois objets :
+#   GatewayClass : QUEL logiciel fait le travail (ici Envoy, piloté par Envoy Gateway)   -> posé par l'équipe plateforme
+#   Gateway      : QUELLES portes sont ouvertes (ports, noms d'hôte)                      -> posé par l'équipe plateforme
+#   HTTPRoute    : QUEL trafic va vers QUEL Service (voir routes.yaml)                    -> posé par chaque équipe applicative
+# Contrairement à un Ingress (un objet unique, annotations propriétaires), chaque rôle a son objet, ses droits RBAC, et la
+# configuration spécifique à Envoy vit dans une ressource dédiée (EnvoyProxy) au lieu de polluer le standard.
+---
+# Réglages du proxy Envoy que le contrôleur crée pour nous (le "data plane").
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: lab
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        replicas: 1
+      envoyService:
+        # Service de type LoadBalancer par défaut : sur kind il resterait éternellement en <pending> (aucun cloud derrière),
+        # et la Gateway ne passerait jamais en Programmed. En ClusterIP elle est prête tout de suite ; on y accède par UN
+        # seul port-forward (scripts/gateway.ps1). Sur un vrai cluster : LoadBalancer.
+        type: ClusterIP
+        name: envoy-lab           # nom fixe : sinon Envoy Gateway génère un nom avec un hash
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller   # "ce contrôleur gère cette classe"
+  parametersRef:                                                  # ... avec ces réglages
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: lab
+    namespace: envoy-gateway-system
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: lab
+  namespace: envoy-gateway-system
+spec:
+  gatewayClassName: envoy
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      # Les navigateurs résolvent *.localhost vers 127.0.0.1 tout seuls : pas de fichier hosts à modifier sous Windows.
+      hostname: "*.localhost"
+      allowedRoutes:
+        namespaces:
+          from: All     # les HTTPRoute des autres namespaces (ml-platform, loadtest...) ont le droit de s'attacher ici

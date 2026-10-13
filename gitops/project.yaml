@@ -1,0 +1,21 @@
+# AppProject = périmètre de sécurité d'ArgoCD : d'où une application peut tirer ses manifestes (sourceRepos) et OÙ elle peut
+# déployer (destinations). Le projet "default" autorise tout ; ici on liste ce dont le lab a besoin, rien de plus.
+# Une application qui tenterait une autre source ou un autre cluster serait refusée par ArgoCD.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: lab
+  namespace: argocd
+spec:
+  description: Plateforme de serving ML (lab)
+  sourceRepos:
+    - https://github.com/hcridlig/k8s-ml-platform.git
+    - https://kubernetes-sigs.github.io/metrics-server/
+    - https://prometheus-community.github.io/helm-charts
+    - registry-1.docker.io/envoyproxy
+  destinations:
+    - server: https://kubernetes.default.svc     # le cluster où ArgoCD tourne
+      namespace: "*"
+  clusterResourceWhitelist:                      # les charts créent des CRD et des ClusterRole : objets non namespacés
+    - group: "*"
+      kind: "*"

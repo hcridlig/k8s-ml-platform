@@ -1,0 +1,17 @@
+# Overlay "lab" = la base (deploy/) + ce qui est propre à cet environnement. C'est CE dossier qu'ArgoCD déploie.
+# Un second environnement (staging, prod) serait un dossier voisin avec ses propres images, replicas, ressources...
+# sans copier un seul manifeste : on ne réécrit jamais la base, on la corrige.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../deploy
+# Transformer "images" : remplace le nom ET le tag de toute image appelée `name:` dans TOUS les manifestes de la base,
+# sans toucher aux fichiers. C'est la seule partie de ce fichier que la CI modifie (job "promote" : `kustomize edit set image`).
+# GITHUB_OWNER est remplacé par ton identifiant GitHub (en minuscules) : ./scripts/set-owner.ps1 -Owner <toi>
+images:
+  - name: ml-api
+    newName: ghcr.io/hcridlig/ml-api
+    newTag: pending-first-ci-run   # écrasé par la CI dès la première exécution réussie
+  - name: ml-dashboard
+    newName: ghcr.io/hcridlig/ml-dashboard
+    newTag: pending-first-ci-run

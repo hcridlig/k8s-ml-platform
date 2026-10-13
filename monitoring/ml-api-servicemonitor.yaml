@@ -1,0 +1,18 @@
+# ServiceMonitor = "Prometheus, va collecter les métriques des pods derrière ce Service".
+# C'est l'Operator qui le traduit en configuration Prometheus. Pas de fichier de config à éditer, pas de redémarrage.
+# Ce fichier nécessite les CRD du stack Prometheus : à appliquer APRÈS l'installation du chart.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ml-api
+  namespace: ml-platform
+spec:
+  selector:
+    matchLabels:
+      app: ml-api              # sélectionne le Service ml-api (par son label), pas les pods directement
+  endpoints:
+    - port: http               # NOM du port dans le Service (20-service.yaml), pas son numéro
+      path: /metrics
+      interval: 15s
+  # Chaque pod derrière le Service devient une cible : Prometheus ajoute tout seul les labels
+  # namespace, service, pod, container. C'est ce qui permet les graphiques "par pod".

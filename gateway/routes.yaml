@@ -1,0 +1,80 @@
+# Une HTTPRoute par application. Chacune vit dans le namespace de SON Service (une route ne peut cibler que les Services de son
+# propre namespace, sauf ReferenceGrant explicite : c'est la barrière entre équipes) et s'attache à la Gateway "lab".
+# Le routage se fait sur le nom d'hôte (en-tête Host) : un seul port d'entrée (8080 sur ton PC), plusieurs applications.
+#   http://app.localhost:8080       l'atelier de chiffres (ml-api)
+#   http://cluster.localhost:8080   le plan du cluster (dashboard)
+#   http://locust.localhost:8080    Locust
+#   http://grafana.localhost:8080   Grafana
+#   http://argocd.localhost:8080    ArgoCD
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ml-api
+  namespace: ml-platform
+spec:
+  parentRefs:
+    - {name: lab, namespace: envoy-gateway-system}
+  hostnames: [app.localhost]
+  rules:
+    - backendRefs:
+        - {name: ml-api, port: 80}
+      # Envoy répartit CHAQUE requête entre les pods (contrairement à kube-proxy, qui répartit par connexion) :
+      # c'est ce qui rend la rafale de l'atelier de chiffres équilibrée même avec une connexion navigateur réutilisée.
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ml-dashboard
+  namespace: ml-platform
+spec:
+  parentRefs:
+    - {name: lab, namespace: envoy-gateway-system}
+  hostnames: [cluster.localhost]
+  rules:
+    - backendRefs:
+        - {name: ml-dashboard, port: 80}
+      # Le plan du cluster reçoit ses données par SSE : UNE réponse qui ne se termine jamais. Le délai de requête par défaut
+      # d'Envoy couperait le flux ; "0s" = pas de délai (champ standard Gateway API).
+      timeouts:
+        request: 0s
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: locust
+  namespace: loadtest
+spec:
+  parentRefs:
+    - {name: lab, namespace: envoy-gateway-system}
+  hostnames: [locust.localhost]
+  rules:
+    - backendRefs:
+        - {name: locust-master, port: 8089}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  parentRefs:
+    - {name: lab, namespace: envoy-gateway-system}
+  hostnames: [grafana.localhost]
+  rules:
+    - backendRefs:
+        - {name: monitoring-grafana, port: 80}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: argocd
+  namespace: argocd
+spec:
+  parentRefs:
+    - {name: lab, namespace: envoy-gateway-system}
+  hostnames: [argocd.localhost]
+  rules:
+    - backendRefs:
+        # argocd-server parle en HTTP simple derrière la Gateway (server.insecure: true dans platform/argocd-values.yaml).
+        - {name: argocd-server, port: 80}

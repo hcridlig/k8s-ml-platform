@@ -1,0 +1,19 @@
+# Service = point d'entrée stable (IP + nom DNS) devant des pods qui, eux, naissent et meurent.
+# Il sélectionne les pods par LABEL (app=ml-api) et ne route que vers ceux dont la readinessProbe passe.
+# Résultat : les pods sont remplaçables, le client ne voit qu'une adresse : ml-api.ml-platform.svc.cluster.local
+# La répartition est assurée par kube-proxy (iptables), à peu près aléatoire, par CONNEXION et non par requête.
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-api
+  namespace: ml-platform
+  labels:
+    app: ml-api
+spec:
+  type: ClusterIP                  # joignable uniquement depuis l'intérieur du cluster
+  selector:
+    app: ml-api
+  ports:
+    - name: http                   # le nom servira au ServiceMonitor Prometheus (phase 2)
+      port: 80                     # port du Service
+      targetPort: http             # port nommé du conteneur (containerPort 8000)

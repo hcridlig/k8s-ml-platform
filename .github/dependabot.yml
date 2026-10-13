@@ -1,0 +1,13 @@
+# Dependabot ouvre une PR quand une dépendance a une nouvelle version (ou un correctif de sécurité) : la CI la teste, tu relis, tu fusionnes.
+# Pour github-actions, il met à jour les SHA épinglés ET le commentaire de version.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: {interval: weekly}
+  - package-ecosystem: docker          # images de base des Dockerfile (python:3.13-slim)
+    directories: [/app, /dashboard]
+    schedule: {interval: weekly}
+  - package-ecosystem: pip             # requirements.txt
+    directories: [/app, /dashboard]
+    schedule: {interval: weekly}

@@ -1,0 +1,127 @@
+# Deployment = "je veux des copies identiques de ce pod, en permanence".
+# Chaîne de contrôle : Deployment -> ReplicaSet (une par version du pod template) -> Pods.
+# Le ReplicaSet recrée un pod dès qu'il en manque un : c'est le self-healing "niveau pod".
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-api
+  namespace: ml-platform
+  labels:
+    app: ml-api
+spec:
+  # PAS de `replicas:` ici, volontairement. Le nombre de pods est piloté par le HPA (30-hpa.yaml).
+  # Si on le laissait, chaque `kubectl apply` remettrait le compteur à cette valeur et écraserait
+  # la décision de l'autoscaler : c'est l'erreur classique quand on ajoute un HPA.
+  revisionHistoryLimit: 5          # anciens ReplicaSets gardés pour `kubectl rollout undo`
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1                  # pendant une mise à jour : au plus 1 pod de plus que le nombre voulu
+      maxUnavailable: 0            # jamais moins de pods Ready que voulu -> zéro coupure de service
+
+  selector:
+    matchLabels:
+      app: ml-api                  # DOIT correspondre aux labels du template ci-dessous (immuable)
+
+  template:                        # le modèle de pod ; le modifier déclenche un rolling update
+    metadata:
+      labels:
+        app: ml-api
+    spec:
+      # Répartit les pods sur des nœuds différents : si un nœud tombe, on ne perd pas tout.
+      # ScheduleAnyway = préférence (pas bloquant) ; avec un cluster à 1 nœud, tout reste planifiable.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: ml-api
+
+      terminationGracePeriodSeconds: 30   # temps laissé au pod pour finir ses requêtes avant le SIGKILL
+
+      securityContext:             # niveau pod
+        runAsNonRoot: true         # K8s refuse de démarrer si l'image tourne en root
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: api
+          image: ml-api:1.2.0      # tag explicite et immuable ; jamais :latest. En GitOps, overlays/lab/ le remplace par l'image GHCR du dernier commit.
+          # IfNotPresent = ne pas aller chercher l'image sur un registry si elle est déjà sur le nœud.
+          # Mode manuel (kubectl apply -k deploy/) : l'image n'existe sur aucun registry, scripts/build.ps1 la charge dans kind.
+          # Mode GitOps : le tag est un SHA de commit, donc unique et immuable : IfNotPresent est sûr (pas de :latest qui change).
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+
+          env:
+            # Active /sick et /crash dans l'API, utilisés par les boutons "Pannes" du dashboard.
+            # Lab uniquement : à supprimer pour une vraie mise en production.
+            - name: ENABLE_CHAOS
+              value: "1"
+            # Downward API : le pod apprend sur quel nœud il tourne (l'interface l'affiche à côté du nom du pod).
+            # Même mécanisme que HOSTNAME (nom du pod, fourni d'office) mais pour des champs que K8s n'expose pas en variable.
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+
+          # requests = ce que le scheduler RÉSERVE pour placer le pod ET la base de calcul du HPA
+          #            (le HPA raisonne en % de la request CPU : sans request, pas d'autoscaling CPU).
+          # limits   = plafond. CPU dépassé -> le conteneur est bridé (throttling, la latence monte).
+          #            Mémoire dépassée -> OOMKilled, puis redémarrage.
+          # Valeurs calées sur une mesure (faite sur une machine de test) : ~19 ms de CPU par requête /predict,
+          # ~180 Mio de RAM. Sur ton PC l'ordre de grandeur sera le même ; vérifie avec `kubectl top pods` sous charge.
+          #   cible HPA = 50 % de 200 m = 100 m par pod, soit ~5 requêtes/s par pod ;
+          #   limite CPU 400 m = ~20 requêtes/s par pod avant saturation.
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 400m
+              memory: 512Mi
+
+          # Trois sondes, trois rôles différents :
+          # startupProbe   : laisse le temps au démarrage ; liveness/readiness sont suspendues avant son succès.
+          # readinessProbe : en cas d'échec, le pod est retiré des endpoints du Service (plus de trafic),
+          #                  mais PAS redémarré. C'est ce qui garantit des rolling updates propres.
+          # livenessProbe  : en cas d'échec répété, le kubelet TUE et redémarre le conteneur (self-healing).
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            failureThreshold: 30   # jusqu'à 60 s pour démarrer
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+            failureThreshold: 2
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+            failureThreshold: 3    # 3 échecs d'affilée (~30 s) avant redémarrage
+
+          # À l'arrêt d'un pod, deux choses partent EN PARALLÈLE : le retrait de ses endpoints du Service
+          # (qui met quelques secondes à se propager aux nœuds) et le SIGTERM envoyé au conteneur.
+          # Sans pause, le pod peut s'arrêter alors qu'on lui envoie encore des requêtes (erreurs 502/connexion refusée).
+          # Le preStop retarde le SIGTERM de 5 s : le temps que plus personne ne route vers lui.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+
+          securityContext:         # niveau conteneur : principe du moindre privilège
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true   # le conteneur ne peut plus rien écrire dans son image...
+            capabilities:
+              drop: ["ALL"]
+
+          volumeMounts:            # ...sauf dans /tmp, un volume jetable lié à la vie du pod
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: tmp
+          emptyDir: {}

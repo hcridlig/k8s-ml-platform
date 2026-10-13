@@ -1,0 +1,18 @@
+# PodDisruptionBudget = "quoi qu'il arrive de VOLONTAIRE, garde au moins N pods disponibles".
+#
+# Il protège contre les interruptions volontaires : `kubectl drain` (maintenance d'un nœud), mise à jour du
+# cluster, autoscaler de nœuds. Un drain qui violerait le budget ATTEND (ou est refusé) au lieu de vider le nœud.
+# Il ne protège PAS contre les pannes : un crash, un OOMKill ou un nœud qui tombe ne le consultent pas.
+#
+# Essai : `kubectl drain <nœud> --ignore-daemonsets --delete-emptydir-data` puis regarde les pods se déplacer
+# un par un dans le dashboard. N'oublie pas `kubectl uncordon <nœud>` ensuite.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ml-api
+  namespace: ml-platform
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: ml-api

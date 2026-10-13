@@ -1,0 +1,14 @@
+# Kustomize = assembler de manifestes SANS templating : une liste de ressources + des transformations déclaratives.
+# Ici c'est la "base" : tout ce qui décrit la plateforme, avec les images locales (ml-api:1.2.0...).
+# Mode manuel :  kubectl apply -k deploy/      (le -k remplace le -f : il passe par Kustomize)
+# Mode GitOps : overlays/lab/ réutilise cette base et change seulement ce qui diffère (les images).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - 00-namespace.yaml
+  - 10-deployment.yaml
+  - 20-service.yaml
+  - 30-hpa.yaml
+  - 40-pdb.yaml
+  - 50-dashboard-rbac.yaml
+  - 60-dashboard.yaml

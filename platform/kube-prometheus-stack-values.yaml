@@ -1,0 +1,44 @@
+# kube-prometheus-stack = Prometheus (collecte et stockage des métriques) + Prometheus Operator (pilote Prometheus
+# via des objets Kubernetes : ServiceMonitor, PrometheusRule) + Grafana + kube-state-metrics (état des objets K8s).
+# Ici : taille "laptop" et sans ce qui ne fonctionne pas sur Docker Desktop (kind).
+
+alertmanager:
+  enabled: false            # le routage des alertes (mail, Slack) viendra plus tard ; en attendant elles s'affichent dans Prometheus
+
+# Composants du plan de contrôle : leurs ports de métriques ne sont pas joignables dans kind, on évite des cibles "down".
+kubeEtcd: {enabled: false}
+kubeControllerManager: {enabled: false}
+kubeScheduler: {enabled: false}
+kubeProxy: {enabled: false}
+
+# node-exporter monte le "/" de l'hôte avec une propagation de montage que Docker Desktop/kind refuse : le pod ne démarre pas.
+# On s'en passe : les métriques par conteneur (CPU, mémoire, throttling) viennent du kubelet (cAdvisor), pas de lui.
+nodeExporter: {enabled: false}
+
+defaultRules:               # alertes et règles d'enregistrement livrées avec le chart : on retire celles des composants coupés
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeProxy: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    nodeExporterAlerting: false
+    nodeExporterRecording: false
+
+grafana:
+  adminPassword: admin-lab                  # lab uniquement ; en production : un Secret (admin.existingSecret)
+  defaultDashboardsTimezone: Europe/Paris   # le chart fournit déjà des dizaines de dashboards Kubernetes prêts à l'emploi
+
+prometheus:
+  prometheusSpec:
+    # Par défaut Prometheus ne lit que les ServiceMonitor / PrometheusRule portant le label de CETTE release Helm.
+    # En mettant false, il lit ceux de tout le cluster : nos objets du namespace ml-platform sont pris sans label spécial.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    retention: 2d           # historique conservé : suffisant pour un lab
+    scrapeInterval: 15s
+    resources:
+      requests: {cpu: 200m, memory: 600Mi}
+      limits: {memory: 1500Mi}
