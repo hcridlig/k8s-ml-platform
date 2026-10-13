@@ -5,3 +5,5 @@ prometheus-fastapi-instrumentator==8.1.0
 msgpack==1.2.1
 setuptools==78.1.1
 urllib3==2.8.0
+wheel==0.46.2
+jaraco.context==6.1.0
